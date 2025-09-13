@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fantasy Co-Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+
+  <!-- Hero -->
+  <div class="bg-blue-900 text-white py-8 text-center">
+    <h1 class="text-3xl font-bold">Fantasy Football Co-Manager</h1>
+    <p class="text-lg">Live ESPN Data + AI Advice</p>
+  </div>
+
+  <!-- Team Overview -->
+  <div class="container mx-auto py-8 px-4">
+    <h2 class="text-2xl font-bold mb-4">Team Overview</h2>
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <p><strong>Record:</strong> <span id="teamRecord">Loading...</span></p>
+      <p><strong>Points For:</strong> <span id="teamPoints">Loading...</span></p>
+      <p><strong>Waiver Rank:</strong> <span id="teamWaiver">Loading...</span></p>
+    </div>
+  </div>
+
+  <!-- Top Performers -->
+  <div class="container mx-auto py-8 px-4">
+    <h2 class="text-2xl font-bold mb-4">Top Performers</h2>
+    <div id="topPerformers" class="grid md:grid-cols-3 gap-4"></div>
+  </div>
+
+  <!-- Weekly Projections -->
+  <div class="container mx-auto py-8 px-4">
+    <h2 class="text-2xl font-bold mb-4">Weekly Projections</h2>
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <canvas id="projectionChart" height="150"></canvas>
+    </div>
+  </div>
+
+  <!-- AI Assistant -->
+  <div class="container mx-auto py-8 px-4">
+    <h2 class="text-2xl font-bold mb-4">AI Assistant</h2>
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <div id="chatContainer" class="h-64 overflow-y-auto border p-4 mb-4"></div>
+      <div class="flex">
+        <input type="text" id="userMessage" placeholder="Ask about waivers, trades, or lineup advice..." class="flex-1 border px-4 py-2 rounded-l-lg">
+        <button id="sendMessageBtn" class="bg-blue-600 text-white px-4 py-2 rounded-r-lg">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadTeamOverview() {
+      const res = await fetch("/api/team-overview");
+      const data = await res.json();
+      document.getElementById("teamRecord").textContent = data.record;
+      document.getElementById("teamPoints").textContent = `${data.points_for.toFixed(1)} pts`;
+      document.getElementById("teamWaiver").textContent = `#${data.waiver_rank}`;
+    }
+
+    async function loadTopPerformers() {
+      const res = await fetch("/api/top-performers");
+      const players = await res.json();
+      const container = document.getElementById("topPerformers");
+      container.innerHTML = "";
+      players.forEach(p => {
+        container.innerHTML += `
+          <div class="p-4 border rounded-lg shadow-sm bg-gray-50">
+            <p class="font-bold">${p.name}</p>
+            <p>${p.position} - ${p.team}</p>
+            <p>Last Week: <span class="text-green-600">${p.last_week.toFixed(1)} pts</span></p>
+            <p>Proj: ${p.proj.toFixed(1)} pts</p>
+          </div>`;
+      });
+    }
+
+    async function loadProjections() {
+      const res = await fetch("/api/projections");
+      const data = await res.json();
+      const ctx = document.getElementById("projectionChart").getContext("2d");
+      new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: data.weeks,
+          datasets: [
+            {
+              label: "Actual Points",
+              data: data.actuals,
+              borderColor: "#3b82f6",
+              backgroundColor: "rgba(59, 130, 246, 0.1)",
+              tension: 0.3,
+              fill: true,
+            },
+            {
+              label: "Projected Points",
+              data: data.projected,
+              borderColor: "#10b981",
+              backgroundColor: "rgba(16, 185, 129, 0.1)",
+              borderDash: [5, 5],
+              tension: 0.3,
+              fill: false,
+            }
+          ],
+        },
+        options: { responsive: true, plugins: { legend: { position: "top" } } }
+      });
+    }
+
+    const chatContainer = document.getElementById("chatContainer");
+    const userMessage = document.getElementById("userMessage");
+    const sendMessageBtn = document.getElementById("sendMessageBtn");
+
+    function addMessage(text, sender="ai") {
+      const div = document.createElement("div");
+      div.className = sender === "user" ? "text-right mb-2" : "text-left mb-2";
+      div.innerHTML = `<div class="inline-block px-3 py-2 rounded-lg ${sender === "user" ? "bg-gray-200" : "bg-blue-100"}">${text}</div>`;
+      chatContainer.appendChild(div);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    sendMessageBtn.addEventListener("click", async () => {
+      const msg = userMessage.value.trim();
+      if (!msg) return;
+      addMessage(msg, "user");
+      userMessage.value = "";
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message: msg})
+      });
+      const data = await res.json();
+      addMessage(data.reply, "ai");
+    });
+
+    // Load on startup
+    loadTeamOverview();
+    loadTopPerformers();
+    loadProjections();
+  </script>
+</body>
+</html>
